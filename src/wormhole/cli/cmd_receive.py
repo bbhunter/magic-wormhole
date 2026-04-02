@@ -376,7 +376,7 @@ class Receiver:
                     # the incoming file _inside_ of it (i.e.. don't
                     # delete + overwrite whole tree)
                     abs_destname = os.path.abspath(
-                        os.path.join(self.args.cwd, self.args.output_file, destname)
+                        os.path.join(self.args.cwd, self.args.output_file, os.path.basename(destname))
                     )
                     overwrite_allowed = True
                 else:
