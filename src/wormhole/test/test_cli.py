@@ -1247,6 +1247,24 @@ def test_existing_destdir(tmpdir_factory):
     assert s == os.path.join(tmpdir, "destination_file")
 
 
+def test_existing_destdir_malicious(tmpdir_factory):
+    """
+    Test that our attempts to preserve an existing output
+    directory correctly work even if a zip contains a (possibly)
+    malicious path pointing outside of the destdir (e.g. via ../ and
+    similar)
+    """
+    args = mock.Mock()
+    args.relay_url = ""
+    tmpdir = tempfile.mkdtemp()
+    args.cwd = os.getcwd()
+    args.output_file = tmpdir
+    cmd = cmd_receive.Receiver(args)
+
+    s = cmd._decide_destname(None, "../../../destination_file")
+    assert s == os.path.join(tmpdir, "destination_file")
+
+
 def test_not_remove_existing_destdir(tmpdir_factory):
     """
     Do not remove an entire existing directory.
