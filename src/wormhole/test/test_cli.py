@@ -8,6 +8,7 @@ import tempfile
 import zipfile
 from functools import partial
 from textwrap import dedent, fill
+from pathlib import Path
 
 from click import UsageError
 from click.testing import CliRunner
@@ -23,6 +24,9 @@ from unittest import mock
 
 import pytest
 import pytest_twisted
+
+from hypothesis import given
+from hypothesis import strategies as st
 
 from .. import __version__
 from .._interfaces import ITorManager
@@ -1245,6 +1249,65 @@ def test_existing_destdir(tmpdir_factory):
 
     s = cmd._decide_destname(None, "destination_file")
     assert s == os.path.join(tmpdir, "destination_file")
+
+
+def test_existing_destdir_malicious(tmpdir_factory):
+    """
+    Test that our attempts to preserve an existing output
+    directory correctly work even if a zip contains a (possibly)
+    malicious path pointing outside of the destdir (e.g. via ../ and
+    similar)
+    """
+    args = mock.Mock()
+    args.relay_url = ""
+    tmpdir = tempfile.mkdtemp()
+    args.cwd = os.getcwd()
+    args.output_file = tmpdir
+    cmd = cmd_receive.Receiver(args)
+
+    s = cmd._decide_destname(None, "../../../destination_file")
+    assert s == os.path.join(tmpdir, "destination_file")
+
+
+@given(
+    st.lists(
+        st.one_of(
+            st.just(".."),
+            st.text(),
+        )
+    ),
+    st.one_of([st.just("file"), st.just("directory")]),
+    st.booleans(),
+)
+def test_destdir_traversal(tmpdir_factory, segments, mode, outdir):
+    """
+    Let Hypothesis explore the space of directories, and ensure we
+    can't traverse outside of our base.
+
+    segments: random path segments, including ".."'s
+    mode: "file" or "directory" (currently unused by _decide_destname)
+    outdir: whether to include an arg for pre-existing output directory
+    """
+    base = tmpdir_factory.mktemp("base")
+    args = mock.Mock()
+    args.relay_url = ""
+    if outdir:
+        args.output_file = base
+    else:
+        args.output_file = None
+
+    receiver = cmd_receive.Receiver(args)
+    receiver.args.cwd = base
+
+    try:
+        result = receiver._decide_destname(mode, "/".join(segments))
+    except cmd_receive.TransferRejectedError:
+        # in this case, we wouldn't even have tried to write to the
+        # path, so whatever happened to get here (path-wise) is fine
+        return
+    rpath = Path(result)
+    bpath = Path(base)
+    assert rpath.is_relative_to(bpath), "_decide_destname must always decide a subpath"
 
 
 def test_not_remove_existing_destdir(tmpdir_factory):
